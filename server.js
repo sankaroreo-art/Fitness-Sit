@@ -1,21 +1,23 @@
 const express = require('express');
 const cors = require('cors');
-const fetch = require('node-fetch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
+app.use(cors({ origin: '*' }));
+app.use(express.json({ limit: '2mb' }));
 
-// Health check
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'Coach Verde API' }));
+app.get('/health', (req, res) => {
+  const hasKey = !!process.env.GEMINI_API_KEY;
+  res.json({ status: 'ok', service: 'Coach Verde API', gemini_key_set: hasKey });
+});
 
-// Gemini proxy endpoint
 app.post('/api/chat', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Server not configured — GEMINI_API_KEY missing' });
+
+  if (!apiKey) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY not set in Render environment variables' });
+  }
 
   try {
     const response = await fetch(
@@ -30,13 +32,15 @@ app.post('/api/chat', async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || 'Gemini API error' });
+      console.error('Gemini error:', data);
+      return res.status(response.status).json({ error: data.error?.message || 'Gemini error' });
     }
 
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to reach Gemini API: ' + err.message });
+    console.error('Fetch error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`Coach Verde backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Coach Verde running on port ${PORT}`));
